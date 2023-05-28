@@ -1,6 +1,6 @@
 src=$(wildcard *.cpp)
 obj=$(patsubst %.cpp, %.o, $(src))
-target=server
+target=server.app
 $(target):$(obj)
 	g++ $(obj) -o $(target) -lpthread
 
