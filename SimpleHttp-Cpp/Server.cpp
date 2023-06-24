@@ -9,14 +9,10 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "Server.h"
-
+#include "ThreadPool.h"
 using namespace std;
 
 Server::Server(int port = 10000) : m_port(port)
-{
-}
-
-void Server::init()
 {
     // 1.创建套接字
     m_lfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -67,6 +63,14 @@ void Server::init()
         perror("epoll_ctl");
         exit(0);
     }
+
+    // 设置线程池最小5个线程，最大10个线程
+    m_threadPool = new ThreadPool(5, 10);
+    if (m_threadPool == nullptr)
+    {
+        perror("ThreadPool");
+        exit(0);
+    }
 }
 
 void Server::run()
@@ -90,28 +94,39 @@ void Server::run()
             if (curfd == m_lfd)
             {
                 // 与客户端建立连接
-                // acceptClient();
-                thread thread_accept(&Server::acceptClient, this);
-                cout << "建立连接线程id: " << thread_accept.get_id() << endl;
-                thread_accept.detach();
+                // acceptClient(this);
+
+                // 多线程模式
+                // thread thread_accept(&Server::acceptClient, this);
+                // cout << "建立连接线程id: " << thread_accept.get_id() << endl;
+                // thread_accept.detach();
+
+                // 线程池模式
+                m_threadPool->addTask(acceptClient, this);
             }
             else
             {
                 // 多线程进行数据交互
+                // m_cfd = curfd;
                 thread thread_recv(&Server::recvHttpRequest, this, curfd);
                 cout << "交互线程id: " << thread_recv.get_id() << endl;
                 thread_recv.detach();
+
+                // 线程池模式
+                // m_cfd = curfd;
+                // m_threadPool->addTask(recvHttpRequest, this);
             }
         }
     }
 }
 
-void Server::acceptClient()
+void Server::acceptClient(void *arg)
 {
+    Server *server = static_cast<Server *>(arg);
     // 1. 建立新的连接
     struct sockaddr_in addr;
     socklen_t len = sizeof(struct sockaddr);
-    int cfd = accept(m_lfd, (struct sockaddr *)&addr, &len);
+    int cfd = accept(server->m_lfd, (struct sockaddr *)&addr, &len);
     if (cfd == -1)
     {
         perror("accept");
@@ -129,7 +144,8 @@ void Server::acceptClient()
     struct epoll_event ev;
     ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = cfd;
-    int ret = epoll_ctl(m_epfd, EPOLL_CTL_ADD, cfd, &ev);
+    int ret = epoll_ctl(server->m_epfd, EPOLL_CTL_ADD, cfd, &ev);
+    cout << "已添加新文件描述符至epfd: " << cfd << endl;
     if (ret == -1)
     {
         perror("epoll_ctl");
@@ -140,6 +156,7 @@ void Server::acceptClient()
 // 数据交互
 void Server::recvHttpRequest(int cfd)
 {
+    // Server *server = static_cast<Server *>(arg);
     cout << "交互描述符：" << cfd << endl;
 
     int len, totle = 0;

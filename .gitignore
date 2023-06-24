@@ -33,3 +33,6 @@
 
 # dir
 .vscode
+
+# file
+core.*
