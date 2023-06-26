@@ -127,7 +127,6 @@ void ThreadPool::worker()
         while (m_taskQ.empty() && !m_shutdown)
         {
             m_condQueue.wait(lk);
-
             // 判断是否要销毁线程
             if (m_exitNum > 0)
             {

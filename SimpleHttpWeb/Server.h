@@ -1,6 +1,10 @@
 #pragma once
 #include <arpa/inet.h>
+#include <mysql/mysql.h>
+#include <string>
 #include "ThreadPool.h"
+
+using namespace std;
 
 class ThreadPool;
 
@@ -30,8 +34,8 @@ public:
     void run();
 
 private:
-    int sendHeadMsg(int cfd, int status, const char *descr, const char *type, int length);
-    int sendJson(int cfd);
+    string parseHttp(char *buf);
+    void sendHttp(int cfd, string buf);
     // static void recvHttpRequest(void *arg);
     void recvHttpRequest(int cfd);
     static void acceptClient(void *arg);
@@ -44,4 +48,5 @@ private:
     struct epoll_event *m_evs;
     const int m_maxNode = 128;
     ThreadPool *m_threadPool;
+    MYSQL *m_mysql;
 };

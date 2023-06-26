@@ -8,9 +8,12 @@
 #include <thread>
 #include <fcntl.h>
 #include <errno.h>
+#include <jsoncpp/json/json.h>
 #include "Server.h"
 #include "ThreadPool.h"
+
 using namespace std;
+using namespace Json;
 
 Server::Server(int port = 10000) : m_port(port)
 {
@@ -71,13 +74,32 @@ Server::Server(int port = 10000) : m_port(port)
         perror("ThreadPool");
         exit(0);
     }
+    // 数据库连接
+    m_mysql = mysql_init(NULL);
+    if (m_mysql == NULL)
+    {
+        printf("mysql_init() error\n");
+        exit(0);
+    }
+    // 连接数据库服务器
+    m_mysql = mysql_real_connect(m_mysql, "localhost", "root", "789456123",
+                                 "skin", 3306, NULL, 0);
+    if (m_mysql == NULL)
+    {
+        printf("mysql_real_connect() error\n");
+        exit(0);
+    }
+    printf("mysql api使用的默认编码: %s\n", mysql_character_set_name(m_mysql));
+    // 设置编码为utf8
+    mysql_set_character_set(m_mysql, "utf8");
+    printf("mysql api使用的修改之后的编码: %s\n", mysql_character_set_name(m_mysql));
+    printf("恭喜, 连接数据库服务器成功了...\n");
 }
 
 void Server::run()
 {
     cout << "服务器已启动，端口：" << m_port
          << " m_lfd: " << m_lfd << endl;
-    int ret;
 
     struct epoll_event evs[1024];
     // 1024改了下面size不需要修改
@@ -180,8 +202,8 @@ void Server::recvHttpRequest(int cfd)
         // 表示数据已接收完毕，errno非异常值
         // 开始处理业务逻辑
         cout << "数据已接收完毕: " << buf << endl;
-        sendHeadMsg(cfd, 200, "OK", "application/json", -1);
-        sendJson(cfd);
+        string ans = parseHttp(buf);
+        sendHttp(cfd, ans);
         cout << "send OK" << endl;
     }
     else if (len == 0)
@@ -199,24 +221,93 @@ void Server::recvHttpRequest(int cfd)
     }
 }
 
-int Server::sendHeadMsg(int cfd, int status, const char *descr, const char *type, int length)
+string Server::parseHttp(char *buf)
+{
+    string http = buf;
+    vector<string> parse(2);
+    int i = 0, j = 0, k = 0;
+    while (k < 2)
+    {
+        if (http[j] == ' ')
+        {
+            parse[k] = http.substr(i, j - i);
+            i = j + 1;
+            k++;
+        }
+        j++;
+    }
+
+    if (parse[0] == "GET" && parse[1].find("/user/") != -1)
+    {
+        for (int i = parse[1].size() - 1; i >= 0; --i)
+        {
+            if (parse[1][i] == '/')
+            {
+                string userId = parse[1].substr(i + 1, parse[1].size() - i);
+                string strSQL = "select * from user where id = " + userId;
+                int ret = mysql_query(m_mysql, strSQL.c_str());
+                if (ret != 0)
+                {
+                    printf("mysql_query() a失败了, 原因: %s\n", mysql_error(m_mysql));
+                    break;
+                }
+                // 取出结果集
+                MYSQL_RES *res = mysql_store_result(m_mysql);
+                if (res == NULL)
+                {
+                    printf("mysql_store_result() 失败了, 原因: %s\n", mysql_error(m_mysql));
+                    break;
+                }
+                // 得到结果集中的列数
+                int num = mysql_num_fields(res);
+                // 得到所有列的名字, 并且输出
+                MYSQL_FIELD *fields = mysql_fetch_fields(res);
+                // for (int i = 0; i < num; ++i)
+                // {
+                //     printf("%s\t\t", fields[i].name);
+                // }
+                // printf("\n");
+                // 遍历结果集中所有的行
+                MYSQL_ROW row;
+                Value root;
+                root["code"] = "0";
+                root["msg"] = "成功";
+                Value data;
+                while ((row = mysql_fetch_row(res)) != NULL)
+                {
+                    // 将当前行中的每一列信息读出
+                    for (int i = 0; i < num; ++i)
+                    {
+                        // printf("%s\t\t", row[i]);
+                        if (row[i])
+                            data[fields[i].name] = row[i];
+                        else
+                            data[fields[i].name] = "";
+                    }
+                    // printf("\n");
+                }
+                // 释放资源 - 结果集
+                mysql_free_result(res);
+                root["data"] = data;
+                StyledWriter Writer_style;
+                return Writer_style.write(root);
+            }
+        }
+    }
+}
+
+void Server::sendHttp(int cfd, string ans)
 {
     // 状态行
     char buf[4096] = {0};
-    char content[] = "{\"agentIsMobile\":false,\"platform\":\"windows\",\"version\":null}";
-    sprintf(buf, "HTTP/1.1 %d %s\r\n", status, descr);
+    sprintf(buf, "HTTP/1.1 %d %s\r\n", 200, "OK");
     // 响应头
-    sprintf(buf + strlen(buf), "Content-Type: %s\r\n", type);
-    sprintf(buf + strlen(buf), "Content-Length: %d\r\n\r\n", strlen(content));
+    sprintf(buf + strlen(buf), "Content-Type: %s\r\n", "application/json");
+    sprintf(buf + strlen(buf), "Content-Length: %d\r\n\r\n", ans.size());
     // sprintf(buf + strlen(buf), content);
     // cout << buf << endl;
     send(cfd, buf, strlen(buf), 0);
-    return 0;
-}
-
-int Server::sendJson(int cfd)
-{
-    char buf[] = "{\"agentIsMobile\":false,\"platform\":\"windows\",\"version\":null}";
+    // 数据
     cout << buf << endl;
-    send(cfd, buf, strlen(buf), 0);
+    send(cfd, ans.c_str(), ans.size(), 0);
 }
