@@ -18,7 +18,7 @@ EventLoop::EventLoop(const string threadName)
     m_isQuit = true; // 默认没有启动
     m_threadID = this_thread::get_id();
     m_threadName = threadName == string() ? "MainThread" : threadName;
-    m_dispatcher = new SelectDispatcher(this);
+    m_dispatcher = new EpollDispatcher(this);
     // map
     m_channelMap.clear();
     int ret = socketpair(AF_UNIX, SOCK_STREAM, 0, m_socketPair);

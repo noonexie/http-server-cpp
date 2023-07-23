@@ -17,6 +17,7 @@ using namespace Json;
 
 Server::Server(int port = 10000) : m_port(port)
 {
+    int ret;
     // 1.创建套接字
     m_lfd = socket(AF_INET, SOCK_STREAM, 0);
     if (m_lfd == -1)
@@ -26,12 +27,16 @@ Server::Server(int port = 10000) : m_port(port)
     }
     // 2.设置端口复用
     int opt = 1;
-    int ret = setsockopt(m_lfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof opt);
+    ret = setsockopt(m_lfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof opt);
     if (ret == -1)
     {
         perror("setsockopt");
         exit(0);
     }
+    // 2.设置非阻塞
+    // int flag = fcntl(m_lfd, F_GETFL);
+    // flag |= O_NONBLOCK;
+    // fcntl(m_lfd, F_SETFL, flag);
     // 3.绑定端口
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
@@ -51,12 +56,13 @@ Server::Server(int port = 10000) : m_port(port)
         exit(0);
     }
     // 5.创建epoll模型
-    m_epfd = epoll_create(100);
+    m_epfd = epoll_create(1);
     if (m_epfd == -1)
     {
         perror("epoll_create");
         exit(0);
     }
+    // 6.m_lfd上树
     struct epoll_event ev;
     ev.events = EPOLLIN;
     ev.data.fd = m_lfd;
@@ -149,13 +155,14 @@ void Server::acceptClient(void *arg)
     struct sockaddr_in addr;
     socklen_t len = sizeof(struct sockaddr);
     int cfd = accept(server->m_lfd, (struct sockaddr *)&addr, &len);
-    if (cfd == -1)
+    if (cfd <= 0)
     {
         perror("accept");
+        // return;
         exit(0);
     }
     cout << "有新连接建立, cfd: " << cfd
-         << " 客户端IP: " << inet_ntoa(*((struct in_addr *)&addr))
+         << " 客户端IP: " << inet_ntoa(*((struct in_addr *)&addr.sin_addr))
          << " 客户端PORT: " << addr.sin_port << endl;
     // 2. 设置非阻塞：效率高(设置用于通信的文件描述符在epll中为边沿非阻塞工作模式)
     // 边沿模式：检测到读事件后只会通知一次，所以接收数据测要循环接受直至全部数据接收完毕
@@ -294,6 +301,7 @@ string Server::parseHttp(char *buf)
             }
         }
     }
+    return "";
 }
 
 void Server::sendHttp(int cfd, string ans)
@@ -308,6 +316,6 @@ void Server::sendHttp(int cfd, string ans)
     // cout << buf << endl;
     send(cfd, buf, strlen(buf), 0);
     // 数据
-    cout << buf << endl;
+    // cout << buf << endl;
     send(cfd, ans.c_str(), ans.size(), 0);
 }

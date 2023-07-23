@@ -15,11 +15,13 @@ void Channel::writeEventEnable(bool flag)
 {
     if (flag)
     {
+        // 添加写事件
         // m_events |= (int)FDEvent::WriteEvent;
         m_events |= static_cast<int>(FDEvent::WriteEvent);
     }
     else
     {
+        // 去掉写事件
         m_events = m_events & ~(int)FDEvent::WriteEvent;
     }
 }
