@@ -1,48 +1,73 @@
 #pragma once
-#include <map>
-#include <queue>
-#include <thread>
-#include <mutex>
-
-#include "Channel.h"
 #include "Dispatcher.h"
+#include "Channel.h"
+#include <thread>
+#include <queue>
+#include <map>
+#include <mutex>
 using namespace std;
 
-class Channel;
-
-enum ElemType : char
+// 处理该节点中的channel的方式
+enum class ElemType : char
 {
     ADD,
-    REMOVE,
+    DELETE,
     MODIFY
 };
-
-struct ChannelElem
+// 定义任务队列的节点
+struct ChannelElement
 {
+    ElemType type; // 如何处理该节点中的channel
     Channel *channel;
-    ElemType type;
 };
+class Dispatcher;
 
 class EventLoop
 {
 public:
     EventLoop();
-    void run();
-    void processTaskQ();
-    void add();
-    void remove();
-    void modify();
-    int addTask(Channel *channel, ElemType type);
+    EventLoop(const string threadName);
+    ~EventLoop();
+    // 启动反应堆模型
+    int run();
+    // 处理别激活的文件fd
+    int eventActive(int fd, int event);
+    // 添加任务到任务队列
+    int addTask(struct Channel *channel, ElemType type);
+    // 处理任务队列中的任务
+    int processTaskQ();
+    // 处理dispatcher中的节点
+    int add(Channel *channel);
+    int remove(Channel *channel);
+    int modify(Channel *channel);
+    // 释放channel
+    int freeChannel(Channel *channel);
+    int readMessage();
+    // 返回线程ID
     inline thread::id getThreadID()
     {
         return m_threadID;
     }
+    inline string getThreadName()
+    {
+        return m_threadName;
+    }
+    // static int readLocalMessage(void *arg);
 
 private:
-    int m_fd;
+    void taskWakeup();
+
+private:
+    bool m_isQuit;
+    // 该指针指向子类的实例 epoll, poll, select
+    Dispatcher *m_dispatcher;
+    // 任务队列
+    queue<ChannelElement *> m_taskQ;
+    // map
+    map<int, Channel *> m_channelMap;
+    // 线程id, name, mutex
     thread::id m_threadID;
-    map<int, Channel> m_channalMap;
-    queue<ChannelElem *> m_taskQ;
+    string m_threadName;
     mutex m_mutex;
-    Dispatcher m_dispatcher;
+    int m_socketPair[2]; // 存储本地通信的fd 通过socketpair 初始化
 };

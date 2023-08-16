@@ -1,19 +1,31 @@
+#include "ThreadPool.h"
 #include <cassert>
 
-#include "WorkerThread.h"
-#include "ThreadPool.h"
-
-ThreadPool::ThreadPool(EventLoop *ventLoop, int count)
+ThreadPool::ThreadPool(EventLoop *mainLoop, int count)
 {
+    m_index = 0;
+    m_isStart = false;
+    m_mainLoop = mainLoop;
+    m_threadNum = count;
+    m_workerThreads.clear();
+}
+
+ThreadPool::~ThreadPool()
+{
+    for (auto item : m_workerThreads)
+    {
+        delete item;
+    }
 }
 
 void ThreadPool::run()
 {
-    assert(!m_isStart); // 传入为假则程序终止
+    assert(!m_isStart);
     if (m_mainLoop->getThreadID() != this_thread::get_id())
+    {
         exit(0);
+    }
     m_isStart = true;
-    // 启动所有子反应堆
     if (m_threadNum > 0)
     {
         for (int i = 0; i < m_threadNum; ++i)
@@ -29,7 +41,10 @@ EventLoop *ThreadPool::takeWorkerEventLoop()
 {
     assert(m_isStart);
     if (m_mainLoop->getThreadID() != this_thread::get_id())
+    {
         exit(0);
+    }
+    // 从线程池中找一个子线程, 然后取出里边的反应堆实例
     EventLoop *evLoop = m_mainLoop;
     if (m_threadNum > 0)
     {

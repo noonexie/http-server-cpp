@@ -2,19 +2,20 @@
 #include "EventLoop.h"
 #include "ThreadPool.h"
 
-class EventLoop;
 class TcpServer
 {
 public:
-    TcpServer(int threadNum, int port = 10000);
+    TcpServer(int threadNum, unsigned short port = 10000);
+    // 初始化监听
     void setListen();
+    // 启动服务器
     void run();
     static int acceptConnection(void *arg);
 
 private:
-    int m_lfd;
-    int m_port;
     int m_threadNum;
-    ThreadPool *m_threadPool;
     EventLoop *m_mainLoop;
+    ThreadPool *m_threadPool;
+    int m_lfd;
+    unsigned short m_port;
 };
